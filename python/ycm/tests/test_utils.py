@@ -197,6 +197,9 @@ def _MockVimFunctionsEval( value ):
   if value == '&expandtab':
     return 1
 
+  if value == '&expandtab':
+    return 1
+
   return None
 
 
