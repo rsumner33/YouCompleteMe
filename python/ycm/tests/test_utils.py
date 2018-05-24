@@ -194,6 +194,9 @@ def _MockVimFunctionsEval( value ):
   if value == 'shiftwidth()':
     return 2
 
+  if value == '&expandtab':
+    return 1
+
   return None
 
 
