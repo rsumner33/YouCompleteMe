@@ -428,6 +428,44 @@ def EventNotification_FileReadyToParse_TagFiles_UnicodeWorkingDirectory_test(
 
 
 @patch( 'ycm.youcompleteme.YouCompleteMe._AddUltiSnipsDataIfNeeded' )
+@YouCompleteMeInstance( { 'collect_identifiers_from_tags_files': 1 } )
+def EventNotification_FileReadyToParse_TagFiles_UnicodeWorkingDirectory_test(
+    ycm, *args ):
+  unicode_dir = PathToTestFile( 'uni¢𐍈d€' )
+  current_buffer_file = PathToTestFile( 'uni¢𐍈d€', 'current_buffer' )
+  current_buffer = VimBuffer( name = current_buffer_file,
+                              contents = [ 'current_buffer_contents' ],
+                              filetype = 'some_filetype' )
+
+  with patch( 'ycm.client.base_request.BaseRequest.'
+              'PostDataToHandlerAsync' ) as post_data_to_handler_async:
+    with CurrentWorkingDirectory( unicode_dir ):
+      with MockVimBuffers( [ current_buffer ], current_buffer, ( 6, 5 ) ):
+        ycm.OnFileReadyToParse()
+
+    assert_that(
+      # Positional arguments passed to PostDataToHandlerAsync.
+      post_data_to_handler_async.call_args[ 0 ],
+      contains(
+        has_entries( {
+          'filepath': current_buffer_file,
+          'line_num': 6,
+          'column_num': 6,
+          'file_data': has_entries( {
+            current_buffer_file: has_entries( {
+              'contents': 'current_buffer_contents\n',
+              'filetypes': [ 'some_filetype' ]
+            } )
+          } ),
+          'event_name': 'FileReadyToParse',
+          'tag_files': has_item( PathToTestFile( 'uni¢𐍈d€', 'tags' ) )
+        } ),
+        'event_notification'
+      )
+    )
+
+
+@patch( 'ycm.youcompleteme.YouCompleteMe._AddUltiSnipsDataIfNeeded' )
 @YouCompleteMeInstance()
 def EventNotification_BufferVisit_BuildRequestForCurrentAndUnsavedBuffers_test(
     ycm, *args ):
