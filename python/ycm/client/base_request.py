@@ -57,6 +57,16 @@ class BaseRequest( object ):
   def Response( self ):
     return {}
 
+  # This method blocks
+  # |timeout| is num seconds to tolerate no response from server before giving
+  # up; see Requests docs for details (we just pass the param along).
+  @staticmethod
+  def GetDataFromHandler( handler, timeout = DEFAULT_TIMEOUT_SEC ):
+    return JsonFromFuture( BaseRequest._TalkToHandlerAsync( '',
+                                                            handler,
+                                                            'GET',
+                                                            timeout ) )
+
 
   def ShouldResend( self ):
     return self._should_resend
