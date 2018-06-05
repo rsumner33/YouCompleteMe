@@ -26,7 +26,7 @@ import vim
 from ycm import vimsupport
 from ycmd import utils
 from ycmd.completers.completer import Completer
-from ycm.client.base_request import BaseRequest
+from ycm.client.base_request import BaseRequest, HandleServerException
 
 OMNIFUNC_RETURNED_BAD_VALUE = 'Omnifunc returned bad value to YCM!'
 OMNIFUNC_NOT_LIST = ( 'Omnifunc did not return a list or a dict with a "words" '
@@ -57,12 +57,8 @@ class OmniCompleter( Completer ):
 
 
   def ShouldUseNowInner( self, request_data ):
-    if request_data[ 'force_semantic' ]:
+    if request_data.get( 'force_semantic', False ):
       return True
-    disabled_filetypes = self.user_options[
-      'filetype_specific_completion_to_disable' ]
-    if not vimsupport.CurrentFiletypesEnabled( disabled_filetypes ):
-      return False
     return super( OmniCompleter, self ).ShouldUseNowInner( request_data )
 
 
@@ -128,6 +124,7 @@ class OmniCompleter( Completer ):
       'query': query
     }
 
-    response = BaseRequest().PostDataToHandler( request_data,
-                                                'filter_and_sort_candidates' )
-    return response if response is not None else []
+    with HandleServerException():
+      return BaseRequest.PostDataToHandler( request_data,
+                                            'filter_and_sort_candidates' )
+    return candidates

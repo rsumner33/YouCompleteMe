@@ -24,6 +24,7 @@ from builtins import *  # noqa
 
 from future.utils import itervalues
 import re
+import vim
 from ycm import vimsupport
 
 SYNTAX_GROUP_REGEX = re.compile(
@@ -45,20 +46,20 @@ SYNTAX_REGION_ARGUMENT_REGEX = re.compile(
   r"^(?:matchgroup|start)=.*$")
 
 # See ":h syn-nextgroup".
-SYNTAX_NEXTGROUP_ARGUMENTS = {
+SYNTAX_NEXTGROUP_ARGUMENTS = set([
   'skipwhite',
   'skipnl',
   'skipempty'
-}
+])
 
 # These are the parent groups from which we want to extract keywords.
-ROOT_GROUPS = {
+ROOT_GROUPS = set([
   'Boolean',
   'Identifier',
   'Statement',
   'PreProc',
   'Type'
-}
+])
 
 
 class SyntaxGroup( object ):
@@ -69,7 +70,10 @@ class SyntaxGroup( object ):
 
 
 def SyntaxKeywordsForCurrentBuffer():
-  syntax_output = vimsupport.CaptureVimCommand( 'syntax list' )
+  vim.command( 'redir => b:ycm_syntax' )
+  vim.command( 'silent! syntax list' )
+  vim.command( 'redir END' )
+  syntax_output = vimsupport.VimExpressionToPythonType( 'b:ycm_syntax' )
   return _KeywordsFromSyntaxListOutput( syntax_output )
 
 

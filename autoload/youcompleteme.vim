@@ -1,4 +1,4 @@
-" Copyright (C) 2011-2018 YouCompleteMe contributors
+" Copyright (C) 2011, 2012  Google Inc.
 "
 " This file is part of YouCompleteMe.
 "
@@ -41,10 +41,6 @@ let s:pollers = {
       \   'server_ready': {
       \     'id': -1,
       \     'wait_milliseconds': 100
-      \   },
-      \   'receive_messages': {
-      \     'id': -1,
-      \     'wait_milliseconds': 100
       \   }
       \ }
 
@@ -75,30 +71,15 @@ function! s:Pyeval( eval_string )
 endfunction
 
 
-function! s:StartMessagePoll()
-  if s:pollers.receive_messages.id < 0
-    let s:pollers.receive_messages.id = timer_start(
-          \ s:pollers.receive_messages.wait_milliseconds,
-          \ function( 's:ReceiveMessages' ) )
+function! youcompleteme#Enable()
+  call s:SetUpBackwardsCompatibility()
+
+  " This can be 0 if YCM libs are old or -1 if an exception occured while
+  " executing the function.
+  if s:SetUpPython() != 1
+    return
   endif
-endfunction
 
-
-function! s:ReceiveMessages( timer_id )
-  let poll_again = s:Pyeval( 'ycm_state.OnPeriodicTick()' )
-
-  if poll_again
-    let s:pollers.receive_messages.id = timer_start(
-          \ s:pollers.receive_messages.wait_milliseconds,
-          \ function( 's:ReceiveMessages' ) )
-  else
-    " Don't poll again until we open another buffer
-    let s:pollers.receive_messages.id = -1
-  endif
-endfunction
-
-
-function! s:SetUpOptions()
   call s:SetUpCommands()
   call s:SetUpCpoptions()
   call s:SetUpCompleteopt()
@@ -110,17 +91,6 @@ function! s:SetUpOptions()
 
   call s:SetUpSigns()
   call s:SetUpSyntaxHighlighting()
-endfunction
-
-
-function! youcompleteme#Enable()
-  call s:SetUpBackwardsCompatibility()
-
-  if !s:SetUpPython()
-    return
-  endif
-
-  call s:SetUpOptions()
 
   call youcompleteme#EnableCursorMovedAutocommands()
   augroup youcompleteme
@@ -139,7 +109,6 @@ function! youcompleteme#Enable()
     autocmd InsertLeave * call s:OnInsertLeave()
     autocmd VimLeave * call s:OnVimLeave()
     autocmd CompleteDone * call s:OnCompleteDone()
-    autocmd BufEnter,WinEnter * call s:UpdateMatches()
   augroup END
 
   " The FileType event is not triggered for the first loaded file. We wait until
@@ -194,20 +163,17 @@ import vim
 # Add python sources folder to the system path.
 script_folder = vim.eval( 's:script_folder_path' )
 sys.path.insert( 0, os.path.join( script_folder, '..', 'python' ) )
-sys.path.insert( 0, os.path.join( script_folder, '..', 'third_party', 'ycmd' ) )
+
+from ycm.setup import SetUpSystemPaths, SetUpYCM
 
 # We enclose this code in a try/except block to avoid backtraces in Vim.
 try:
-  from ycmd import server_utils as su
-  su.AddNearestThirdPartyFoldersToSysPath( script_folder )
-  # We need to import ycmd's third_party folders as well since we import and
-  # use ycmd code in the client.
-  su.AddNearestThirdPartyFoldersToSysPath( su.__file__ )
+  SetUpSystemPaths()
 
   # Import the modules used in this file.
-  from ycm import base, vimsupport, youcompleteme
+  from ycm import base, vimsupport
 
-  ycm_state = youcompleteme.YouCompleteMe()
+  ycm_state = SetUpYCM()
 except Exception as error:
   # We don't use PostVimMessage or EchoText from the vimsupport module because
   # importing this module may fail.
@@ -369,7 +335,6 @@ function! s:TurnOffSyntasticForCFamily()
   let g:syntastic_c_checkers = []
   let g:syntastic_objc_checkers = []
   let g:syntastic_objcpp_checkers = []
-  let g:syntastic_cuda_checkers = []
 endfunction
 
 
@@ -486,7 +451,6 @@ function! s:OnFileTypeSet()
 
   call s:SetUpCompleteopt()
   call s:SetCompleteFunc()
-  call s:StartMessagePoll()
 
   exec s:python_command "ycm_state.OnBufferVisit()"
   call s:OnFileReadyToParse( 1 )
@@ -500,7 +464,6 @@ function! s:OnBufferEnter()
 
   call s:SetUpCompleteopt()
   call s:SetCompleteFunc()
-  call s:StartMessagePoll()
 
   exec s:python_command "ycm_state.OnBufferVisit()"
   " Last parse may be outdated because of changes from other buffers. Force a
@@ -512,17 +475,13 @@ endfunction
 function! s:OnBufferUnload()
   " Expanding <abuf> returns the unloaded buffer number as a string but we want
   " it as a true number for the getbufvar function.
-  let buffer_number = str2nr( expand( '<abuf>' ) )
-  if !s:AllowedToCompleteInBuffer( buffer_number )
+  if !s:AllowedToCompleteInBuffer( str2nr( expand( '<abuf>' ) ) )
     return
   endif
 
-  exec s:python_command "ycm_state.OnBufferUnload( " . buffer_number . " )"
-endfunction
-
-
-function! s:UpdateMatches()
-  exec s:python_command "ycm_state.UpdateMatches()"
+  let deleted_buffer_file = expand( '<afile>:p' )
+  exec s:python_command "ycm_state.OnBufferUnload(" .
+        \ "vim.eval( 'deleted_buffer_file' ) )"
 endfunction
 
 
@@ -572,9 +531,6 @@ function! s:PollFileParseResponse( ... )
   endif
 
   exec s:python_command "ycm_state.HandleFileParseRequest()"
-  if s:Pyeval( "ycm_state.ShouldResendFileParseRequest()" )
-    call s:OnFileReadyToParse( 1 )
-  endif
 endfunction
 
 
@@ -598,20 +554,12 @@ endfunction
 
 
 function! s:OnInsertChar()
-  if !s:AllowedToCompleteInCurrentBuffer()
-    return
-  endif
-
   call timer_stop( s:pollers.completion.id )
   call s:CloseCompletionMenu()
 endfunction
 
 
 function! s:OnDeleteChar( key )
-  if !s:AllowedToCompleteInCurrentBuffer()
-    return a:key
-  endif
-
   call timer_stop( s:pollers.completion.id )
   if pumvisible()
     return "\<C-y>" . a:key
@@ -844,11 +792,8 @@ function! s:SetUpCommands()
   command! YcmDebugInfo call s:DebugInfo()
   command! -nargs=* -complete=custom,youcompleteme#LogsComplete
         \ YcmToggleLogs call s:ToggleLogs(<f-args>)
-  command! -nargs=* -complete=custom,youcompleteme#SubCommandsComplete -range
-        \ YcmCompleter call s:CompleterCommand(<count>,
-        \                                      <line1>,
-        \                                      <line2>,
-        \                                      <f-args>)
+  command! -nargs=* -complete=custom,youcompleteme#SubCommandsComplete
+        \ YcmCompleter call s:CompleterCommand(<f-args>)
   command! YcmDiags call s:ShowDiagnostics()
   command! YcmShowDetailedDiagnostic call s:ShowDetailedDiagnostic()
   command! YcmForceCompileAndDiagnostics call s:ForceCompileAndDiagnostics()
@@ -856,13 +801,7 @@ endfunction
 
 
 function! s:RestartServer()
-  call s:SetUpOptions()
-
   exec s:python_command "ycm_state.RestartServer()"
-
-  call timer_stop( s:pollers.receive_messages.id )
-  let s:pollers.receive_messages.id = -1
-
   call timer_stop( s:pollers.server_ready.id )
   let s:pollers.server_ready.id = timer_start(
         \ s:pollers.server_ready.wait_milliseconds,
@@ -889,14 +828,14 @@ function! youcompleteme#LogsComplete( arglead, cmdline, cursorpos )
 endfunction
 
 
-function! s:CompleterCommand( count, line1, line2, ... )
-  " CompleterCommand will call the OnUserCommand function of a completer. If
-  " the first arguments is of the form "ft=..." it can be used to specify the
-  " completer to use (for example "ft=cpp"). Else the native filetype completer
-  " of the current buffer is used. If no native filetype completer is found and
-  " no completer was specified this throws an error. You can use "ft=ycm:ident"
-  " to select the identifier completer. The remaining arguments will be passed
-  " to the completer.
+function! s:CompleterCommand(...)
+  " CompleterCommand will call the OnUserCommand function of a completer.
+  " If the first arguments is of the form "ft=..." it can be used to specify the
+  " completer to use (for example "ft=cpp").  Else the native filetype completer
+  " of the current buffer is used.  If no native filetype completer is found and
+  " no completer was specified this throws an error.  You can use
+  " "ft=ycm:ident" to select the identifier completer.
+  " The remaining arguments will be passed to the completer.
   let arguments = copy(a:000)
   let completer = ''
 
@@ -908,11 +847,7 @@ function! s:CompleterCommand( count, line1, line2, ... )
   endif
 
   exec s:python_command "ycm_state.SendCommandRequest(" .
-        \ "vim.eval( 'l:arguments' )," .
-        \ "vim.eval( 'l:completer' )," .
-        \ "vimsupport.GetBoolValue( 'a:count != -1' )," .
-        \ "vimsupport.GetIntValue( 'a:line1' )," .
-        \ "vimsupport.GetIntValue( 'a:line2' ) )"
+        \ "vim.eval( 'l:arguments' ), vim.eval( 'l:completer' ) )"
 endfunction
 
 

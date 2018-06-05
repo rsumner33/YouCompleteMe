@@ -22,7 +22,8 @@ from __future__ import absolute_import
 # Not installing aliases from python-future; it's unreliable and slow.
 from builtins import *  # noqa
 
-from ycm.client.base_request import BaseRequest, BuildRequestData
+from ycm.client.base_request import ( BaseRequest, BuildRequestData,
+                                      HandleServerException )
 from ycm import vimsupport
 from ycmd.utils import ToUnicode
 
@@ -37,7 +38,6 @@ class CommandRequest( BaseRequest ):
   def __init__( self, arguments, completer_target = None, extra_data = None ):
     super( CommandRequest, self ).__init__()
     self._arguments = _EnsureBackwardsCompatibility( arguments )
-    self._command = arguments and arguments[ 0 ]
     self._completer_target = ( completer_target if completer_target
                                else 'filetype_default' )
     self._extra_data = extra_data
@@ -52,8 +52,9 @@ class CommandRequest( BaseRequest ):
       'completer_target': self._completer_target,
       'command_arguments': self._arguments
     } )
-    self._response = self.PostDataToHandler( request_data,
-                                             'run_completer_command' )
+    with HandleServerException():
+      self._response = self.PostDataToHandler( request_data,
+                                               'run_completer_command' )
 
 
   def Response( self ):
@@ -113,8 +114,7 @@ class CommandRequest( BaseRequest ):
             [ fixit[ 'text' ] for fixit in self._response[ 'fixits' ] ] )
 
         vimsupport.ReplaceChunks(
-          self._response[ 'fixits' ][ fixit_index ][ 'chunks' ],
-          silent = self._command == 'Format' )
+          self._response[ 'fixits' ][ fixit_index ][ 'chunks' ] )
       except RuntimeError as e:
         vimsupport.PostVimMessage( str( e ) )
 

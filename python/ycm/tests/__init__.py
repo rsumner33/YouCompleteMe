@@ -1,4 +1,4 @@
-# Copyright (C) 2016-2018 YouCompleteMe contributors
+# Copyright (C) 2016 YouCompleteMe contributors
 #
 # This file is part of YouCompleteMe.
 #
@@ -25,7 +25,6 @@ from builtins import *  # noqa
 from ycm.tests.test_utils import MockVimModule
 MockVimModule()
 
-import contextlib
 import functools
 import os
 import requests
@@ -33,23 +32,22 @@ import time
 import warnings
 
 from ycm.client.base_request import BaseRequest
-from ycm.tests import test_utils
 from ycm.youcompleteme import YouCompleteMe
+from ycmd import user_options_store
 from ycmd.utils import CloseStandardStreams, WaitUntilProcessIsTerminated
 
 # The default options which are only relevant to the client, not the server and
 # thus are not part of default_options.json, but are required for a working
 # YouCompleteMe object.
 DEFAULT_CLIENT_OPTIONS = {
-  'g:ycm_server_python_interpreter': '',
-  'g:ycm_log_level': 'info',
-  'g:ycm_keep_logfiles': 0,
-  'g:ycm_extra_conf_vim_data': [],
-  'g:ycm_show_diagnostics_ui': 1,
-  'g:ycm_echo_current_diagnostic': 1,
-  'g:ycm_enable_diagnostic_signs': 1,
-  'g:ycm_enable_diagnostic_highlighting': 0,
-  'g:ycm_always_populate_location_list': 0,
+  'log_level': 'info',
+  'keep_logfiles': 0,
+  'extra_conf_vim_data': [],
+  'show_diagnostics_ui': 1,
+  'echo_current_diagnostic': 1,
+  'enable_diagnostic_signs': 1,
+  'enable_diagnostic_highlighting': 0,
+  'always_populate_location_list': 0,
 }
 
 
@@ -58,19 +56,15 @@ def PathToTestFile( *args ):
   return os.path.join( dir_of_current_script, 'testdata', *args )
 
 
-@contextlib.contextmanager
-def UserOptions( options ):
-  old_vim_options = test_utils.VIM_OPTIONS.copy()
-  test_utils.VIM_OPTIONS.update( DEFAULT_CLIENT_OPTIONS )
-  test_utils.VIM_OPTIONS.update( options )
-  try:
-    yield
-  finally:
-    test_utils.VIM_OPTIONS = old_vim_options
+def MakeUserOptions( custom_options = {} ):
+  options = dict( user_options_store.DefaultOptions() )
+  options.update( DEFAULT_CLIENT_OPTIONS )
+  options.update( custom_options )
+  return options
 
 
 def _IsReady():
-  return BaseRequest().GetDataFromHandler( 'ready' )
+  return BaseRequest.GetDataFromHandler( 'ready' )
 
 
 def WaitUntilReady( timeout = 5 ):
@@ -129,13 +123,12 @@ def YouCompleteMeInstance( custom_options = {} ):
   def Decorator( test ):
     @functools.wraps( test )
     def Wrapper( *args, **kwargs ):
-      with UserOptions( custom_options ):
-        ycm = YouCompleteMe()
-        WaitUntilReady()
-        ycm.CheckIfServerIsReady()
-        try:
-          test( ycm, *args, **kwargs )
-        finally:
-          StopServer( ycm )
+      ycm = YouCompleteMe( MakeUserOptions( custom_options ) )
+      WaitUntilReady()
+      ycm.CheckIfServerIsReady()
+      try:
+        test( ycm, *args, **kwargs )
+      finally:
+        StopServer( ycm )
     return Wrapper
   return Decorator
